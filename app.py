@@ -12,7 +12,7 @@ def log_to_sheets(symbol, money):
     try: requests.post(form_url, data=payload)
     except: pass
 
-# --- 2. ฟังก์ชันวิเคราะห์ (Logic เดิม 100% จากที่คุณให้มา) ---
+# --- 2. ฟังก์ชันวิเคราะห์ (Logic เดิม 100%) ---
 def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     try:
         stock = finvizfinance(symbol)
@@ -80,15 +80,22 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
         return fundament, news_analysis, insider_df, agg_summary, tech_signal, chart_url, dip_price, tp_short, tp_target, sl_val, sl_workable, sentiment_summary, stock_type
     except Exception as e: return None, str(e), None, None, None, None, None, None, None, None, None, None, None
 
-# --- 3. การแสดงผล UI แบบสั้น กระชับ (Compact) ---
+# --- 3. การแสดงผล UI ---
 st.set_page_config(page_title="Ultimate Pro Stock", layout="wide")
 
-c_in1, c_in2, c_in3 = st.columns([2, 2, 1])
-with c_in1: symbol = st.text_input("กรอกชื่อหุ้น:", value="SKYT").upper()
-with c_in2: my_money = st.number_input("งบลงทุน ($):", value=300)
-with c_in3:
-    st.write("##")
-    btn = st.button("🚀 SCAN")
+# ปรับส่วนรับค่าให้ปุ่ม SCAN อยู่แถวเดียวกับช่องกรอก
+col_input1, col_input2, col_input3 = st.columns([2, 2, 1])
+
+with col_input1:
+    symbol = st.text_input("กรอกชื่อหุ้น:", value="SKYT").upper()
+
+with col_input2:
+    my_money = st.number_input("งบลงทุน ($):", value=300)
+
+with col_input3:
+    # ใช้ช่องว่างดันปุ่มลงมาให้ตรงกับช่องกรอก
+    st.markdown('<div style="padding-top: 28px;"></div>', unsafe_allow_html=True)
+    btn = st.button("🚀 SCAN", use_container_width=True)
 
 if btn:
     log_to_sheets(symbol, my_money)
@@ -99,7 +106,7 @@ if btn:
         st.subheader(f"📈 วิเคราะห์ {symbol} | ประเภท: {s_type}")
         st.write(f"📊 Market Cap: {fund['Market Cap']} | Avg Volume: {fund['Avg Volume']}")
         
-        # --- สัญญาณเทคนิค (ถอดมาจากหน้าจอ Print ของคุณ) ---
+        # --- สัญญาณเทคนิค ---
         st.divider()
         st.markdown(f"**🚩 สัญญาณเทคนิคปัจจุบัน:** {signal}")
         st.write(f"📊 SMA20: {fund['SMA20']} | SMA50: {fund['SMA50']} | SMA200: {fund['SMA200']}")
@@ -128,7 +135,7 @@ if btn:
         else:
             st.write("ไม่พบข้อมูลการขายของคนใน")
 
-        # --- กราฟและข่าว (เลื่อนลงมาดู) ---
+        # --- กราฟและข่าว ---
         st.divider()
         st.image(chart, use_container_width=True)
         
