@@ -2,8 +2,34 @@ import streamlit as st
 import pandas as pd
 from finvizfinance.quote import finvizfinance
 from textblob import TextBlob
+from streamlit_gsheets import GSheetsConnection
+import datetime
 
-# --- ฟังก์ชันหลักดึง Logic ทั้งหมดจาก Colab มาใช้ ---
+# --- 1. ฟังก์ชันบันทึกข้อมูลลง Google Sheets ---
+def log_to_sheets(symbol, money):
+    try:
+        # เชื่อมต่อกับ Google Sheets ผ่าน Secrets ที่ตั้งค่าไว้
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        # อ่านข้อมูลปัจจุบันจากแผ่นงานชื่อ "Sheet1"
+        existing_data = conn.read(worksheet="Sheet1", ttl=0)
+        
+        # เตรียมข้อมูลแถวใหม่
+        new_row = pd.DataFrame([{
+            "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Symbol": symbol.upper(),
+            "Investment_USD": money,
+            "User_IP": "Visitor"
+        }])
+        
+        # รวมข้อมูลเก่าและใหม่เข้าด้วยกัน
+        updated_data = pd.concat([existing_data, new_row], ignore_index=True)
+        # อัปเดตข้อมูลกลับไปยัง Google Sheets
+        conn.update(worksheet="Sheet1", data=updated_data)
+    except Exception as e:
+        # แสดงข้อผิดพลาดที่ Sidebar หากบันทึกไม่สำเร็จ (จะไม่รบกวนหน้าจอหลัก)
+        st.sidebar.error(f"⚠️ Log Error: {e}")
+
+# --- 2. ฟังก์ชันวิเคราะห์ Logic จาก Colab (คงเดิมทุกประการ) ---
 def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     try:
         stock = finvizfinance(symbol)
@@ -23,7 +49,7 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
             try: return float(s)
             except: return 0.0
 
-        # --- 1. จำแนกประเภทหุ้น ---
+        # --- จำแนกประเภทหุ้น ---
         mcap = to_num(fundament['Market Cap'])
         price = to_num(fundament['Price'])
         avg_vol = to_num(fundament['Avg Volume'])
@@ -37,7 +63,7 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
         else:
             stock_type = "🔍 Small-Cap / Speculative (หุ้นขนาดเล็ก เน้นเก็งกำไร)"
 
-        # --- 2. วิเคราะห์ AI Sentiment ---
+        # --- วิเคราะห์ AI Sentiment ---
         news_analysis = []
         sentiment_summary = "⚪ Neutral News (0.00)"
         if news_df is not None and not news_df.empty:
@@ -51,7 +77,7 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
             avg_score = total_polarity / len(top_news)
             sentiment_summary = f"🟢 Bullish News ({avg_score:.2f})" if avg_score > 0.1 else f"🔴 Bearish News ({avg_score:.2f})" if avg_score < -0.1 else f"⚪ Neutral News ({avg_score:.2f})"
 
-        # --- 3. คำนวณ Buy the Dip & TP ---
+        # --- คำนวณ Buy the Dip & TP ---
         target_price = to_num(fundament['Target Price'])
         sma20_dist = to_num(fundament['SMA20']) / 100
         dip_price = price if sma20_dist < 0 else price * (1 - 0.02)
@@ -61,7 +87,7 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
         liq_ratio = ((my_investment_usd / price) / avg_vol) * 100
         sl_workable = "YES (SAFE)" if liq_ratio < 0.05 else "RISKY"
 
-        # --- 4. คำนวณภาพรวมคนใน ---
+        # --- คำนวณภาพรวมคนใน ---
         agg_summary = {'total_shares_before': 0, 'total_sold_shares': 0, 'total_sold_value': 0, 'avg_sell_price': 0}
         if insider_df is not None and not insider_df.empty:
             insider_df['shares_num'] = insider_df['#Shares'].apply(to_num)
@@ -80,7 +106,7 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     except Exception as e:
         return None, str(e), None, None, None, None, None, None, None, None, None, None, None
 
-# --- ส่วนการแสดงผลบนหน้าแอป (Streamlit UI) ---
+# --- 3. ส่วนการแสดงผลบนหน้าแอป (Streamlit UI) ---
 st.set_page_config(page_title="Ultimate Pro Stock", layout="wide")
 st.title("🚀 Ultimate Pro Stock Intelligence")
 
@@ -88,6 +114,9 @@ symbol = st.text_input("กรอกชื่อหุ้น (Ticker):", value="
 my_money = st.number_input("เงินลงทุนต่อไม้ ($):", value=300)
 
 if st.button("เริ่มวิเคราะห์แบบเจาะลึก"):
+    # บันทึกข้อมูลการสแกนลง Google Sheets ทันทีที่กดปุ่ม
+    log_to_sheets(symbol, my_money)
+    
     with st.spinner('กำลังประมวลผลข้อมูล...'):
         fund, news_list, insider_raw, summary, signal, chart, dip, tp1, tp2, sl, sl_status, sentiment_top, s_type = get_ultimate_pro_intelligence(symbol, my_money)
 
@@ -118,7 +147,7 @@ if st.button("เริ่มวิเคราะห์แบบเจาะล
         col_s3.error(f"🛑 Stop Loss: ${sl:.2f}")
         st.caption(f"🛡️ สภาพคล่อง SL: {sl_status}")
 
-        # ส่วนที่ 4: สรุปคนใน (เหมือนใน Colab)
+        # ส่วนที่ 4: สรุปคนใน
         st.divider()
         st.subheader(f"🏢 สรุปความเชื่อมั่นคนใน {symbol}")
         if summary['total_shares_before'] > 0:
@@ -128,7 +157,6 @@ if st.button("เริ่มวิเคราะห์แบบเจาะล
         else:
             st.write("ไม่พบข้อมูลการขายของคนในในช่วงที่ผ่านมา")
         
-        # แสดงตาราง Insider ถ้ามี
         if insider_raw is not None:
             with st.expander("ดูตารางการซื้อขายคนในแบบละเอียด"):
                 st.dataframe(insider_raw[['Date', 'Insider Trading', 'Transaction', 'Cost', '#Shares', 'Value ($)']].head(10))
