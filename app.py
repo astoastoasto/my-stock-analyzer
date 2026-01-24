@@ -7,12 +7,12 @@ import datetime
 
 # --- 1. ระบบบันทึกข้อมูล ---
 def log_to_sheets(symbol, money):
-    form_url = "https://docs.google.com/forms/d/e/1FAIpQLSfLWvSOAQGO0XzO6DsMLgqjyZeKCe_tLSk1WLJYm4FL7zYPjA/formResponse"
+    form_url = "https://docs.google.com/forms/e/1FAIpQLSfLWvSOAQGO0XzO6DsMLgqjyZeKCe_tLSk1WLJYm4FL7zYPjA/formResponse"
     payload = {"entry.336685021": symbol.upper(), "entry.71218977": str(money)}
     try: requests.post(form_url, data=payload)
     except: pass
 
-# --- 2. ฟังก์ชันวิเคราะห์ Logic ---
+# --- 2. ฟังก์ชันวิเคราะห์ Logic (เข้มงวดขึ้นเพื่อความแม่นยำ) ---
 def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     try:
         stock = finvizfinance(symbol)
@@ -35,10 +35,7 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
         price = to_num(fundament['Price'])
         avg_vol = to_num(fundament['Avg Volume'])
         rsi_val = to_num(fundament['RSI (14)'])
-        
-        # เพิ่มค่า SMA50 และ ราคาปิดวันก่อนหน้า เพื่อความแม่นยำ
-        sma50_raw = to_num(fundament['SMA50']) 
-        prev_close = to_num(fundament['Prev Close'])
+        prev_close = to_num(fundament['Prev Close']) # ราคาปิดเมื่อวาน
 
         if mcap > 200_000_000_000: stock_type = "💎 Blue Chip"
         elif price < 5 or mcap < 300_000_000: stock_type = "⚠️ Penny Stock"
@@ -80,8 +77,8 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
                 total_current_remaining = insider_df.groupby('Insider Trading')['total_owned_num'].first().sum()
                 agg_summary['total_shares_before'] = total_current_remaining + agg_summary['total_sold_shares']
 
-        return fundament, news_analysis, insider_df, agg_summary, tech_signal, chart_url, dip_price, tp_short, tp_target, sl_val, sl_workable, sentiment_summary, stock_type, rsi_val, sma50_raw, prev_close
-    except Exception as e: return None, str(e), None, None, None, None, None, None, None, None, None, None, None, None, None, None
+        return fundament, news_analysis, insider_df, agg_summary, tech_signal, chart_url, dip_price, tp_short, tp_target, sl_val, sl_workable, sentiment_summary, stock_type, rsi_val, prev_close
+    except Exception as e: return None, str(e), None, None, None, None, None, None, None, None, None, None, None, None, None
 
 # --- 3. UI Layout ---
 st.set_page_config(page_title="Ultimate Pro Stock", layout="wide")
@@ -90,7 +87,7 @@ st.markdown("### 🔍 Stock Analysis")
 
 col_input1, col_input2, col_input3 = st.columns([2, 2, 1])
 with col_input1:
-    symbol = st.text_input("กรอกชื่อหุ้น:", value="SKYT").upper()
+    symbol = st.text_input("กรอกชื่อหุ้น:", value="NVDA").upper()
 with col_input2:
     my_money = st.number_input("งบลงทุน ($):", value=300)
 with col_input3:
@@ -99,7 +96,7 @@ with col_input3:
 
 if btn:
     log_to_sheets(symbol, my_money)
-    fund, news, insider, summary, signal, chart, dip, tp1, tp2, sl, sl_stat, sent, s_type, rsi_val, sma50_raw, prev_close = get_ultimate_pro_intelligence(symbol, my_money)
+    fund, news, insider, summary, signal, chart, dip, tp1, tp2, sl, sl_stat, sent, s_type, rsi_val, prev_close = get_ultimate_pro_intelligence(symbol, my_money)
 
     if fund:
         st.subheader(f"📈 วิเคราะห์ {symbol} | ประเภท: {s_type}")
@@ -109,24 +106,22 @@ if btn:
         st.write(f"📊 SMA20: {fund['SMA20']} | SMA50: {fund['SMA50']} | SMA200: {fund['SMA200']}")
         st.write(f"📉 RSI (14): {fund['RSI (14)']} | 📰 กระแสข่าวรวม: {sent}")
 
-        # --- ปรับปรุง Trend Logic (เช็คละเอียดแบบแอปจ่ายเงิน) ---
+        # --- ปรับปรุง Trend Logic (เข้มงวดแบบแอปจ่ายเงิน) ---
         sma20_dist = float(fund['SMA20'].replace('%',''))
         sma50_dist = float(fund['SMA50'].replace('%',''))
         current_price = float(fund['Price'].replace(',',''))
         
-        # 1. เช็คขาลง (Bearish): หลุดเส้นสำคัญ หรือ RSI อ่อนแรง หรือราคาต่ำกว่าเมื่อวาน
-        if sma20_dist < 0 or sma50_dist < 0 or rsi_val < 45 or current_price < prev_close:
-            trend_status = "🔴 ขาลง (Bearish - เสี่ยงสูง)"
+        # กฎข้อที่ 1: ถ้าหลุด SMA20 หรือ SMA50 หรือ RSI อ่อนแรง หรือราคาต่ำกว่าเมื่อวาน = Bearish ทันที
+        if sma20_dist < 0 or sma50_dist < 0 or rsi_val < 48 or current_price < prev_close:
+            trend_text = "🔴 ขาลง (Bearish - เสี่ยงสูง)"
             if rsi_val <= 30:
                 st.warning(f"💡 สรุปแนวโน้ม: 🕳️ มุดดิน (Oversold - ลงแรงเกินไปรอเด้ง)")
             else:
-                st.error(f"💡 สรุปแนวโน้ม: {trend_status}")
+                st.error(f"💡 สรุปแนวโน้ม: {trend_text}")
                 
-        # 2. เช็คขาขึ้น (Bullish): ต้องยืนเหนือทั้ง SMA20 และ SMA50 และ RSI > 50
-        elif sma20_dist > 0 and sma50_dist > 0 and rsi_val > 50:
+        # กฎข้อที่ 2: จะ Bullish ได้ต้องยืนเหนือเส้นเฉลี่ยทุกเส้นและ RSI ต้องแข็งแรง
+        elif sma20_dist > 0 and sma50_dist > 0 and rsi_val > 52:
             st.success(f"💡 สรุปแนวโน้ม: 🚀 ขาขึ้นชัดเจน (Strong Bullish)")
-            
-        # 3. พักฐาน
         else:
             st.info(f"💡 สรุปแนวโน้ม: 😴 พักฐาน/แนวโน้มไม่ชัดเจน (Sideway)")
 
