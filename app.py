@@ -2,41 +2,28 @@ import streamlit as st
 import pandas as pd
 from finvizfinance.quote import finvizfinance
 from textblob import TextBlob
-from streamlit_gsheets import GSheetsConnection
 import datetime
+import requests # ตัวช่วยส่งข้อมูลเข้า Google Form
 
-# --- 1. ฟังก์ชันบันทึกข้อมูลลง Google Sheets (ปรับปรุงให้ป้องกัน Error 404) ---
+# --- 1. ฟังก์ชันบันทึกข้อมูลผ่าน Google Form (ส่งเข้า Sheets อัตโนมัติ) ---
 def log_to_sheets(symbol, money):
+    # ลิงก์สำหรับส่งคำตอบเข้าฟอร์มของคุณ
+    form_url = "https://docs.google.com/forms/d/e/1FAIpQLSfLWvSOAQGO0XzO6DsMLgqjyZeKCe_tLSk1WLJYm4FL7zYPjA/formResponse"
+    
+    # ข้อมูลที่เราต้องการส่ง (รหัส entry จากภาพที่คุณหาได้)
+    payload = {
+        "entry.336685021": symbol.upper(), # รหัสช่อง Symbol
+        "entry.71218977": str(money)        # รหัสช่อง Investment
+    }
+    
     try:
-        # เชื่อมต่อกับ Google Sheets
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        
-        # ลองอ่านข้อมูลจาก "Sheet1" หากหาไม่เจอจะสร้าง DataFrame เปล่าแทนเพื่อป้องกันแอปค้าง
-        try:
-            existing_data = conn.read(worksheet="Sheet1", ttl=0)
-        except:
-            existing_data = pd.DataFrame(columns=["Timestamp", "Symbol", "Investment_USD", "User_IP"])
-        
-        # เตรียมข้อมูลแถวใหม่
-        new_row = pd.DataFrame([{
-            "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Symbol": symbol.upper(),
-            "Investment_USD": money,
-            "User_IP": "Visitor"
-        }])
-        
-        # รวมข้อมูลเก่าและใหม่
-        updated_data = pd.concat([existing_data, new_row], ignore_index=True)
-        
-        # สั่งอัปเดตกลับไปยัง Sheet1
-        conn.update(worksheet="Sheet1", data=updated_data)
-        
-    except Exception as e:
-        # แสดง Error ไว้ที่แถบข้างๆ (Sidebar) เพื่อให้รู้สาเหตุแต่ไม่ทำให้หน้าจอหลักพัง
-        st.sidebar.warning(f"บันทึก Log ไม่สำเร็จ: ตรวจสอบชื่อแผ่นงานต้องเป็น 'Sheet1' และสิทธิ์ต้องเป็น 'Editor'")
-        st.sidebar.error(f"รายละเอียด: {e}")
+        # สั่งส่งข้อมูลแบบลับๆ หลังบ้าน
+        requests.post(form_url, data=payload)
+    except:
+        # หากส่งไม่ได้ ให้ข้ามไปเลย ไม่ต้องขึ้น Error ให้ผู้ใช้เห็น
+        pass
 
-# --- 2. ฟังก์ชันวิเคราะห์ Logic (คงเดิมทุกประการตามที่คุณต้องการ) ---
+# --- 2. ฟังก์ชันวิเคราะห์ Logic จาก Colab (คงเดิมทุกประการ) ---
 def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     try:
         stock = finvizfinance(symbol)
@@ -72,7 +59,6 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
 
         # --- วิเคราะห์ AI Sentiment ---
         news_analysis = []
-        sentiment_summary = "⚪ Neutral News (0.00)"
         if news_df is not None and not news_df.empty:
             top_news = news_df.head(15)
             total_polarity = 0
@@ -83,6 +69,8 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
                 news_analysis.append(f"{icon} [{row['Date']}] {row['Title']}")
             avg_score = total_polarity / len(top_news)
             sentiment_summary = f"🟢 Bullish News ({avg_score:.2f})" if avg_score > 0.1 else f"🔴 Bearish News ({avg_score:.2f})" if avg_score < -0.1 else f"⚪ Neutral News ({avg_score:.2f})"
+        else:
+            sentiment_summary = "⚪ No recent news found"
 
         # --- คำนวณ Buy the Dip & TP ---
         target_price = to_num(fundament['Target Price'])
@@ -113,7 +101,7 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     except Exception as e:
         return None, str(e), None, None, None, None, None, None, None, None, None, None, None
 
-# --- 3. ส่วนการแสดงผลบนหน้าแอป ---
+# --- 3. ส่วนการแสดงผลหน้าแอป ---
 st.set_page_config(page_title="Ultimate Pro Stock", layout="wide")
 st.title("🚀 Ultimate Pro Stock Intelligence")
 
@@ -121,10 +109,10 @@ symbol = st.text_input("กรอกชื่อหุ้น (Ticker):", value="
 my_money = st.number_input("เงินลงทุนต่อไม้ ($):", value=300)
 
 if st.button("เริ่มวิเคราะห์แบบเจาะลึก"):
-    # บันทึก Log ทันทีที่กดปุ่ม
+    # บันทึก Log ข้อมูลผ่าน Google Form
     log_to_sheets(symbol, my_money)
     
-    with st.spinner('กำลังประมวลผลข้อมูล...'):
+    with st.spinner('กำลังวิเคราะห์หุ้น...'):
         fund, news_list, insider_raw, summary, signal, chart, dip, tp1, tp2, sl, sl_status, sentiment_top, s_type = get_ultimate_pro_intelligence(symbol, my_money)
 
     if fund:
@@ -139,8 +127,12 @@ if st.button("เริ่มวิเคราะห์แบบเจาะล
         st.write(f"📊 SMA20: {fund['SMA20']} | SMA50: {fund['SMA50']} | SMA200: {fund['SMA200']}")
         st.write(f"📉 กระแสข่าวรวม: {sentiment_top}")
 
-        sma20_val = float(fund['SMA20'].replace('%',''))
-        trend = "🚀 ขาขึ้น (Bullish)" if sma20_val > 0 else "🕳️ มุดดิน (Oversold)" if sma20_val < -5 else "😴 พักฐาน (Sideway)"
+        # คำนวณแนวโน้ม
+        try:
+            sma20_val = float(fund['SMA20'].replace('%',''))
+            trend = "🚀 ขาขึ้น (Bullish)" if sma20_val > 0 else "🕳️ มุดดิน (Oversold)" if sma20_val < -5 else "😴 พักฐาน (Sideway)"
+        except:
+            trend = "ไม่สามารถระบุแนวโน้มได้"
         st.info(f"💡 สรุปแนวโน้ม: {trend}")
 
         st.divider()
@@ -159,16 +151,12 @@ if st.button("เริ่มวิเคราะห์แบบเจาะล
             st.write(f"💰 มูลค่าเงินสดรวม: ${summary['total_sold_value']:,.2f} | เพดานราคาเจ้าของ: ${summary['avg_sell_price']:.2f}")
         else:
             st.write("ไม่พบข้อมูลการขายของคนในในช่วงที่ผ่านมา")
-        
-        if insider_raw is not None:
-            with st.expander("ดูตารางการซื้อขายคนในแบบละเอียด"):
-                st.dataframe(insider_raw[['Date', 'Insider Trading', 'Transaction', 'Cost', '#Shares', 'Value ($)']].head(10))
 
         st.divider()
         st.image(chart, use_container_width=True)
         
-        st.subheader("📰 วิเคราะห์อารมณ์ข่าวล่าสุด 10 อันดับ")
+        st.subheader("📰 ข่าวล่าสุด")
         for line in news_list[:10]:
             st.write(line)
     else:
-        st.error(f"ไม่พบข้อมูลสำหรับ Ticker: {symbol}")
+        st.error(f"ไม่พบข้อมูลสำหรับ: {symbol}")
