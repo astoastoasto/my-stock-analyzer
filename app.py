@@ -83,7 +83,10 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
 # --- 3. การแสดงผล UI ---
 st.set_page_config(page_title="Ultimate Pro Stock", layout="wide")
 
-# ปรับส่วนรับค่าให้ปุ่ม SCAN อยู่แถวเดียวกับช่องกรอก
+# เพิ่มหัวข้อใหญ่ด้านบนช่องกรอกข้อมูล
+st.markdown("### 🔍 Stock Analysis")
+
+# ปรับส่วนรับค่าให้ปุ่ม SCAN อยู่แถวเดียวกัน
 col_input1, col_input2, col_input3 = st.columns([2, 2, 1])
 
 with col_input1:
@@ -93,7 +96,7 @@ with col_input2:
     my_money = st.number_input("งบลงทุน ($):", value=300)
 
 with col_input3:
-    # ใช้ช่องว่างดันปุ่มลงมาให้ตรงกับช่องกรอก
+    # ดันปุ่มลงมาให้ตรงกับช่องกรอกข้อมูล
     st.markdown('<div style="padding-top: 28px;"></div>', unsafe_allow_html=True)
     btn = st.button("🚀 SCAN", use_container_width=True)
 
@@ -102,11 +105,9 @@ if btn:
     fund, news, insider, summary, signal, chart, dip, tp1, tp2, sl, sl_stat, sent, s_type = get_ultimate_pro_intelligence(symbol, my_money)
 
     if fund:
-        # --- หัวข้อหลัก ---
         st.subheader(f"📈 วิเคราะห์ {symbol} | ประเภท: {s_type}")
         st.write(f"📊 Market Cap: {fund['Market Cap']} | Avg Volume: {fund['Avg Volume']}")
         
-        # --- สัญญาณเทคนิค ---
         st.divider()
         st.markdown(f"**🚩 สัญญาณเทคนิคปัจจุบัน:** {signal}")
         st.write(f"📊 SMA20: {fund['SMA20']} | SMA50: {fund['SMA50']} | SMA200: {fund['SMA200']}")
@@ -116,7 +117,6 @@ if btn:
         trend = "🚀 ขาขึ้น (Bullish)" if sma20_val > 0 else "🕳️ มุดดิน (Oversold)" if sma20_val < -5 else "😴 พักฐาน (Sideway)"
         st.info(f"💡 สรุปแนวโน้ม: {trend}")
 
-        # --- กลยุทธ์แนะนำ ---
         st.divider()
         st.subheader(f"🎯 กลยุทธ์แนะนำ: Buy the Dip (ไม้ ${my_money})")
         col1, col2, col3 = st.columns(3)
@@ -125,7 +125,6 @@ if btn:
         col3.error(f"🛑 Stop Loss: ${sl:.2f}")
         st.caption(f"🛡️ สภาพคล่อง SL: {sl_stat}")
 
-        # --- สรุปภาพรวมคนใน ---
         st.divider()
         st.subheader(f"🏢 สรุปความเชื่อมั่นคนใน {symbol}")
         if summary['total_shares_before'] > 0:
@@ -135,7 +134,6 @@ if btn:
         else:
             st.write("ไม่พบข้อมูลการขายของคนใน")
 
-        # --- กราฟและข่าว ---
         st.divider()
         st.image(chart, use_container_width=True)
         
