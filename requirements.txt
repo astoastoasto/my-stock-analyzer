@@ -2,3 +2,4 @@ streamlit
 finvizfinance
 pandas
 textblob
+st-gsheets-connection
