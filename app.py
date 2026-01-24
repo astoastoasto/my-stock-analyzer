@@ -12,7 +12,7 @@ def log_to_sheets(symbol, money):
     try: requests.post(form_url, data=payload)
     except: pass
 
-# --- 2. ฟังก์ชันวิเคราะห์ Logic เดิม ---
+# --- 2. ฟังก์ชันวิเคราะห์ Logic ---
 def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     try:
         stock = finvizfinance(symbol)
@@ -34,6 +34,7 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
         mcap = to_num(fundament['Market Cap'])
         price = to_num(fundament['Price'])
         avg_vol = to_num(fundament['Avg Volume'])
+        rsi_val = to_num(fundament['RSI (14)']) # ดึงค่า RSI มาคำนวณแนวโน้ม
 
         if mcap > 200_000_000_000: stock_type = "💎 Blue Chip"
         elif price < 5 or mcap < 300_000_000: stock_type = "⚠️ Penny Stock"
@@ -75,8 +76,8 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
                 total_current_remaining = insider_df.groupby('Insider Trading')['total_owned_num'].first().sum()
                 agg_summary['total_shares_before'] = total_current_remaining + agg_summary['total_sold_shares']
 
-        return fundament, news_analysis, insider_df, agg_summary, tech_signal, chart_url, dip_price, tp_short, tp_target, sl_val, sl_workable, sentiment_summary, stock_type
-    except Exception as e: return None, str(e), None, None, None, None, None, None, None, None, None, None, None
+        return fundament, news_analysis, insider_df, agg_summary, tech_signal, chart_url, dip_price, tp_short, tp_target, sl_val, sl_workable, sentiment_summary, stock_type, rsi_val
+    except Exception as e: return None, str(e), None, None, None, None, None, None, None, None, None, None, None, None
 
 # --- 3. UI Layout ---
 st.set_page_config(page_title="Ultimate Pro Stock", layout="wide")
@@ -94,7 +95,7 @@ with col_input3:
 
 if btn:
     log_to_sheets(symbol, my_money)
-    fund, news, insider, summary, signal, chart, dip, tp1, tp2, sl, sl_stat, sent, s_type = get_ultimate_pro_intelligence(symbol, my_money)
+    fund, news, insider, summary, signal, chart, dip, tp1, tp2, sl, sl_stat, sent, s_type, rsi_val = get_ultimate_pro_intelligence(symbol, my_money)
 
     if fund:
         st.subheader(f"📈 วิเคราะห์ {symbol} | ประเภท: {s_type}")
@@ -104,13 +105,20 @@ if btn:
         st.write(f"📊 SMA20: {fund['SMA20']} | SMA50: {fund['SMA50']} | SMA200: {fund['SMA200']}")
         st.write(f"📉 RSI (14): {fund['RSI (14)']} | 📰 กระแสข่าวรวม: {sent}")
 
-        sma20_val = float(fund['SMA20'].replace('%',''))
-        if sma20_val > 0:
+        # --- ปรับปรุง Logic แนวโน้มใหม่ (แม่นยำขึ้น) ---
+        sma20_raw = float(fund['SMA20'].replace('%',''))
+        
+        # Bullish: ต้องยืนเหนือเส้น SMA20 และ RSI ไม่ควรต่ำกว่า 45
+        if sma20_raw > 0 and rsi_val >= 45:
             st.success(f"💡 สรุปแนวโน้ม: 🚀 ขาขึ้น (Bullish)")
-        elif sma20_val < -5:
-            st.error(f"💡 สรุปแนวโน้ม: 🕳️ มุดดิน (Oversold)")
+        # Bearish: ถ้าราคาหลุด SMA20 หรือ RSI ต่ำกว่า 45 คืออันตราย
+        elif sma20_raw < 0 or rsi_val < 45:
+            st.error(f"💡 สรุปแนวโน้ม: 🔴 ขาลงชัดเจน (Bearish)")
+        # Oversold: ราคาลงลึกมากจน RSI ต่ำกว่า 30 (โอกาสเด้งสั้น)
+        elif rsi_val <= 30:
+            st.warning(f"💡 สรุปแนวโน้ม: 🕳️ มุดดิน (Oversold - รอสัญญาณกลับตัว)")
         else:
-            st.warning(f"💡 สรุปแนวโน้ม: 😴 พักฐาน (Sideway)")
+            st.warning(f"💡 สรุปแนวโน้ม: 😴 พักฐาน (Sideway/Weakness)")
 
         st.subheader(f"🎯 กลยุทธ์แนะนำ: Buy the Dip (ไม้ ${my_money})")
         col1, col2, col3 = st.columns(3)
