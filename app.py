@@ -5,13 +5,17 @@ from textblob import TextBlob
 from streamlit_gsheets import GSheetsConnection
 import datetime
 
-# --- 1. ฟังก์ชันบันทึกข้อมูลลง Google Sheets ---
+# --- 1. ฟังก์ชันบันทึกข้อมูลลง Google Sheets (ปรับปรุงให้ป้องกัน Error 404) ---
 def log_to_sheets(symbol, money):
     try:
-        # เชื่อมต่อกับ Google Sheets ผ่าน Secrets ที่ตั้งค่าไว้
+        # เชื่อมต่อกับ Google Sheets
         conn = st.connection("gsheets", type=GSheetsConnection)
-        # อ่านข้อมูลปัจจุบันจากแผ่นงานชื่อ "Sheet1"
-        existing_data = conn.read(worksheet="Sheet1", ttl=0)
+        
+        # ลองอ่านข้อมูลจาก "Sheet1" หากหาไม่เจอจะสร้าง DataFrame เปล่าแทนเพื่อป้องกันแอปค้าง
+        try:
+            existing_data = conn.read(worksheet="Sheet1", ttl=0)
+        except:
+            existing_data = pd.DataFrame(columns=["Timestamp", "Symbol", "Investment_USD", "User_IP"])
         
         # เตรียมข้อมูลแถวใหม่
         new_row = pd.DataFrame([{
@@ -21,15 +25,18 @@ def log_to_sheets(symbol, money):
             "User_IP": "Visitor"
         }])
         
-        # รวมข้อมูลเก่าและใหม่เข้าด้วยกัน
+        # รวมข้อมูลเก่าและใหม่
         updated_data = pd.concat([existing_data, new_row], ignore_index=True)
-        # อัปเดตข้อมูลกลับไปยัง Google Sheets
+        
+        # สั่งอัปเดตกลับไปยัง Sheet1
         conn.update(worksheet="Sheet1", data=updated_data)
+        
     except Exception as e:
-        # แสดงข้อผิดพลาดที่ Sidebar หากบันทึกไม่สำเร็จ (จะไม่รบกวนหน้าจอหลัก)
-        st.sidebar.error(f"⚠️ Log Error: {e}")
+        # แสดง Error ไว้ที่แถบข้างๆ (Sidebar) เพื่อให้รู้สาเหตุแต่ไม่ทำให้หน้าจอหลักพัง
+        st.sidebar.warning(f"บันทึก Log ไม่สำเร็จ: ตรวจสอบชื่อแผ่นงานต้องเป็น 'Sheet1' และสิทธิ์ต้องเป็น 'Editor'")
+        st.sidebar.error(f"รายละเอียด: {e}")
 
-# --- 2. ฟังก์ชันวิเคราะห์ Logic จาก Colab (คงเดิมทุกประการ) ---
+# --- 2. ฟังก์ชันวิเคราะห์ Logic (คงเดิมทุกประการตามที่คุณต้องการ) ---
 def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     try:
         stock = finvizfinance(symbol)
@@ -106,7 +113,7 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     except Exception as e:
         return None, str(e), None, None, None, None, None, None, None, None, None, None, None
 
-# --- 3. ส่วนการแสดงผลบนหน้าแอป (Streamlit UI) ---
+# --- 3. ส่วนการแสดงผลบนหน้าแอป ---
 st.set_page_config(page_title="Ultimate Pro Stock", layout="wide")
 st.title("🚀 Ultimate Pro Stock Intelligence")
 
@@ -114,21 +121,19 @@ symbol = st.text_input("กรอกชื่อหุ้น (Ticker):", value="
 my_money = st.number_input("เงินลงทุนต่อไม้ ($):", value=300)
 
 if st.button("เริ่มวิเคราะห์แบบเจาะลึก"):
-    # บันทึกข้อมูลการสแกนลง Google Sheets ทันทีที่กดปุ่ม
+    # บันทึก Log ทันทีที่กดปุ่ม
     log_to_sheets(symbol, my_money)
     
     with st.spinner('กำลังประมวลผลข้อมูล...'):
         fund, news_list, insider_raw, summary, signal, chart, dip, tp1, tp2, sl, sl_status, sentiment_top, s_type = get_ultimate_pro_intelligence(symbol, my_money)
 
     if fund:
-        # ส่วนที่ 1: ข้อมูลทั่วไป
         st.subheader(f"📈 วิเคราะห์แนวโน้มกราฟ {symbol} | ประเภท: {s_type}")
         col_m1, col_m2, col_m3 = st.columns(3)
         col_m1.metric("Market Cap", fund['Market Cap'])
         col_m2.metric("Avg Volume", fund['Avg Volume'])
         col_m3.metric("RSI (14)", fund['RSI (14)'])
 
-        # ส่วนที่ 2: สัญญาณเทคนิค
         st.divider()
         st.markdown(f"**🚩 สัญญาณเทคนิคปัจจุบัน:** {signal}")
         st.write(f"📊 SMA20: {fund['SMA20']} | SMA50: {fund['SMA50']} | SMA200: {fund['SMA200']}")
@@ -138,7 +143,6 @@ if st.button("เริ่มวิเคราะห์แบบเจาะล
         trend = "🚀 ขาขึ้น (Bullish)" if sma20_val > 0 else "🕳️ มุดดิน (Oversold)" if sma20_val < -5 else "😴 พักฐาน (Sideway)"
         st.info(f"💡 สรุปแนวโน้ม: {trend}")
 
-        # ส่วนที่ 3: กลยุทธ์
         st.divider()
         st.subheader(f"🎯 กลยุทธ์แนะนำ: Buy the Dip (สำหรับไม้ ${my_money})")
         col_s1, col_s2, col_s3 = st.columns(3)
@@ -147,7 +151,6 @@ if st.button("เริ่มวิเคราะห์แบบเจาะล
         col_s3.error(f"🛑 Stop Loss: ${sl:.2f}")
         st.caption(f"🛡️ สภาพคล่อง SL: {sl_status}")
 
-        # ส่วนที่ 4: สรุปคนใน
         st.divider()
         st.subheader(f"🏢 สรุปความเชื่อมั่นคนใน {symbol}")
         if summary['total_shares_before'] > 0:
@@ -161,7 +164,6 @@ if st.button("เริ่มวิเคราะห์แบบเจาะล
             with st.expander("ดูตารางการซื้อขายคนในแบบละเอียด"):
                 st.dataframe(insider_raw[['Date', 'Insider Trading', 'Transaction', 'Cost', '#Shares', 'Value ($)']].head(10))
 
-        # ส่วนที่ 5: กราฟและข่าว
         st.divider()
         st.image(chart, use_container_width=True)
         
