@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 from finvizfinance.quote import finvizfinance
 from textblob import TextBlob
-import requests
 import datetime
+import requests
 
 # --- 1. ระบบบันทึกข้อมูล (Google Form) ---
 def log_to_sheets(symbol, money):
@@ -12,11 +12,11 @@ def log_to_sheets(symbol, money):
     try: requests.post(form_url, data=payload)
     except: pass
 
-# --- 2. ฟังก์ชันวิเคราะห์ Logic (ยกมาจากที่คุณส่งมาเป๊ะๆ) ---
+# --- 2. ฟังก์ชันวิเคราะห์ (คืนค่าเดิมจากที่คุณเคยทำได้) ---
 def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     try:
         stock = finvizfinance(symbol)
-        fundament = stock.ticker_fundament()
+        fundament = stock.ticker_fundament() # ตารางข้อมูลที่คุณต้องการ
         news_df = stock.ticker_news()
         insider_df = stock.ticker_inside_trader()
         try: tech_signal = stock.ticker_signal()
@@ -31,18 +31,17 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
             try: return float(s)
             except: return 0.0
 
-        # --- จำแนกประเภทหุ้น ---
+        # --- ส่วนที่ 1: จำแนกประเภทหุ้น ---
         mcap = to_num(fundament['Market Cap'])
         price = to_num(fundament['Price'])
         avg_vol = to_num(fundament['Avg Volume'])
-        if mcap > 200_000_000_000: stock_type = "💎 Blue Chip (หุ้นยักษ์ใหญ่ พื้นฐานแน่น ไม่แกว่งแรง)"
-        elif price < 5 or mcap < 300_000_000: stock_type = "⚠️ Penny Stock (หุ้นจิ๋วสายซิ่ง เสี่ยงสูงมาก!)"
-        elif 2_000_000_000 <= mcap <= 200_000_000_000: stock_type = "🚀 Mid-Cap Swing (หุ้นกลางพื้นฐานดีแต่ซิ่งแรง)"
-        else: stock_type = "🔍 Small-Cap / Speculative (หุ้นขนาดเล็ก เน้นเก็งกำไร)"
+        if mcap > 200_000_000_000: stock_type = "💎 Blue Chip"
+        elif price < 5 or mcap < 300_000_000: stock_type = "⚠️ Penny Stock"
+        elif 2_000_000_000 <= mcap <= 200_000_000_000: stock_type = "🚀 Mid-Cap Swing"
+        else: stock_type = "🔍 Small-Cap / Speculative"
 
-        # --- วิเคราะห์ AI Sentiment ---
+        # --- ส่วนที่ 2: วิเคราะห์ AI Sentiment ---
         news_analysis = []
-        sentiment_summary = "⚪ Neutral News (0.00)"
         if news_df is not None and not news_df.empty:
             top_news = news_df.head(15)
             total_polarity = 0
@@ -52,9 +51,10 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
                 icon = "🟢 (บวก)" if polarity > 0.1 else "🔴 (ลบ)" if polarity < -0.1 else "⚪ (กลาง)"
                 news_analysis.append(f"{icon} [{row['Date']}] {row['Title']}")
             avg_score = total_polarity / len(top_news)
-            sentiment_summary = f"🟢 Bullish News ({avg_score:.2f})" if avg_score > 0.1 else f"🔴 Bearish News ({avg_score:.2f})" if avg_score < -0.1 else f"⚪ Neutral News ({avg_score:.2f})"
+            sentiment_summary = f"({avg_score:.2f})"
+        else: sentiment_summary = "N/A"
 
-        # --- คำนวณ Buy the Dip & TP ---
+        # --- ส่วนที่ 3: คำนวณ Buy the Dip & TP ---
         target_price = to_num(fundament['Target Price'])
         sma20_dist = to_num(fundament['SMA20']) / 100
         dip_price = price if sma20_dist < 0 else price * (1 - 0.02)
@@ -64,18 +64,16 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
         liq_ratio = ((my_investment_usd / price) / avg_vol) * 100
         sl_workable = "YES (SAFE)" if liq_ratio < 0.05 else "RISKY"
 
-        # --- คำนวณภาพรวมคนใน ---
+        # --- ส่วนที่ 4: คำนวณภาพรวมคนใน ---
         agg_summary = {'total_shares_before': 0, 'total_sold_shares': 0, 'total_sold_value': 0, 'avg_sell_price': 0}
         if insider_df is not None and not insider_df.empty:
             insider_df['shares_num'] = insider_df['#Shares'].apply(to_num)
             insider_df['total_owned_num'] = insider_df['#Shares Total'].apply(to_num)
-            insider_df['value_num'] = insider_df['Value ($)'].apply(to_num)
-            insider_df['cost_num'] = insider_df['Cost'].apply(to_num)
             sales = insider_df[insider_df['Transaction'].str.contains('Sale', case=False, na=False)].copy()
             if not sales.empty:
                 agg_summary['total_sold_shares'] = sales['shares_num'].sum()
-                agg_summary['total_sold_value'] = sales['value_num'].sum()
-                agg_summary['avg_sell_price'] = sales['cost_num'].mean()
+                agg_summary['total_sold_value'] = sales['Value ($)'].apply(to_num).sum()
+                agg_summary['avg_sell_price'] = sales['Cost'].apply(to_num).mean()
                 total_current_remaining = insider_df.groupby('Insider Trading')['total_owned_num'].first().sum()
                 agg_summary['total_shares_before'] = total_current_remaining + agg_summary['total_sold_shares']
             insider_df['Sell %'] = insider_df.apply(lambda x: f"{(x['shares_num']/(x['shares_num']+x['total_owned_num'])*100):.2f}%" if 'Sale' in x['Transaction'] else "0.00%", axis=1)
@@ -83,67 +81,62 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
         return fundament, news_analysis, insider_df, agg_summary, tech_signal, chart_url, dip_price, tp_short, tp_target, sl_val, sl_workable, liq_ratio, sentiment_summary, stock_type
     except Exception as e: return None, str(e), None, None, None, None, None, None, None, None, None, None, None, None
 
-# --- 3. การแสดงผล UI ---
-st.set_page_config(page_title="Pro Intelligence", layout="wide")
+# --- 3. การแสดงผลแบบจัดเต็ม (เน้นครบ ไม่เน้นหลบ) ---
+st.set_page_config(page_title="Ultimate Pro Stock", layout="wide")
+st.title("🚀 Ultimate Pro Stock Intelligence")
 
-# ส่วนรับค่า (Compact)
+# ส่วนรับค่า
 c1, c2, c3 = st.columns([2, 2, 1])
-with c1: symbol = st.text_input("Ticker:", value="SKYT").upper()
-with c2: my_money = st.number_input("Budget ($):", value=300)
+with c1: symbol = st.text_input("กรอกชื่อหุ้น:", value="SKYT").upper()
+with c2: my_money = st.number_input("เงินลงทุน ($):", value=300)
 with c3:
     st.write("##")
-    btn = st.button("🚀 SCAN")
+    btn = st.button("เริ่มวิเคราะห์")
 
 if btn:
     log_to_sheets(symbol, my_money)
     fund, news, insider, summary, signal, chart, dip, tp1, tp2, sl, sl_stat, liq, sent, s_type = get_ultimate_pro_intelligence(symbol, my_money)
 
     if fund:
-        # --- ส่วนที่ 1: สรุปข้อมูลสำคัญ (ไม่ต้องเลื่อน) ---
-        st.subheader(f"📉 {symbol} | {s_type}")
+        # --- ข้อมูลสรุปบนสุด ---
+        st.header(f"📈 {symbol} | {s_type}")
         
-        # กล่องข้อมูล 4 ช่อง
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Current Price", f"${fund['Price']}")
-        m2.metric("✅ Buy Zone", f"${dip:.2f}")
-        m3.metric("🎯 TP Short", f"${tp1:.2f}")
-        m4.metric("🛑 Stop Loss", f"${sl:.2f}")
-
-        # บรรทัดสรุปพื้นฐาน
-        st.write(f"📊 **Market Cap:** {fund['Market Cap']} | **Avg Volume:** {fund['Avg Volume']} | **RSI:** {fund['RSI (14)']}")
-        
-        # สรุปแนวโน้ม (Logic เดิม)
-        sma20_val = float(fund['SMA20'].replace('%',''))
-        trend = "🚀 ขาขึ้น (Bullish)" if sma20_val > 0 else "🕳️ มุดดิน (Oversold)" if sma20_val < -5 else "😴 พักฐาน (Sideway)"
-        st.info(f"💡 **แนวโน้ม:** {trend} | **Signal:** {signal}")
+        # แสดงตาราง Fundamental ที่คุณต้องการ (แบบรูปที่ 2)
+        st.write("📊 **Fundamental Data Table**")
+        df_fund = pd.DataFrame([fund]).T
+        df_fund.columns = ["ข้อมูล"]
+        st.table(df_fund) # ใช้ st.table เพื่อให้เห็นครบทุกบรรทัดไม่ต้องเลื่อนในตาราง
 
         st.divider()
 
-        # --- ส่วนที่ 2: รายละเอียด (ใส่ใน Tab เพื่อความเล็ก) ---
-        tab1, tab2, tab3, tab4 = st.tabs(["📊 Chart", "🏢 Insider Trading", "📰 Analysis News", "📑 Full Data"])
+        # --- กลยุทธ์แนะนำ ---
+        st.subheader(f"🎯 กลยุทธ์แนะนำ: Buy the Dip (ไม้ ${my_money})")
+        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+        col_s1.metric("✅ Buy Zone", f"${dip:.2f}")
+        col_s2.metric("🎯 TP 1", f"${tp1:.2f}")
+        col_s3.metric("🎯 TP 2", f"${tp2:.2f}")
+        col_s4.metric("🛑 Stop Loss", f"${sl:.2f}")
+        st.write(f"🛡️ สภาพคล่อง SL: {sl_stat} | Signal: {signal} | News Score: {sent}")
 
-        with tab1:
-            st.image(chart, use_container_width=True)
-            st.write(f"📊 SMA20: {fund['SMA20']} | SMA50: {fund['SMA50']} | SMA200: {fund['SMA200']}")
+        st.divider()
 
-        with tab2:
-            st.subheader(f"🏢 สรุปความเชื่อมั่นคนใน {symbol}")
-            if summary['total_shares_before'] > 0:
-                total_sell_pct = (summary['total_sold_shares'] / summary['total_shares_before']) * 100
-                st.write(f"📦 หุ้นในมือคนในรวม: {summary['total_shares_before']:,.0f} | ขายออกรวม: {total_sell_pct:.2f}%")
-                st.write(f"💰 มูลค่าเงินสดรวม: ${summary['total_sold_value']:,.2f} | เพดานราคาเจ้าของ: ${summary['avg_sell_price']:.2f}")
-            if insider is not None:
-                st.dataframe(insider[['Date', 'Insider Trading', 'Transaction', 'Cost', '#Shares', 'Value ($)', 'Sell %']].head(15), use_container_width=True)
+        # --- สรุปคนใน ---
+        st.subheader(f"🏢 สรุปความเชื่อมั่นคนใน {symbol}")
+        if summary['total_shares_before'] > 0:
+            total_sell_pct = (summary['total_sold_shares'] / summary['total_shares_before']) * 100
+            st.write(f"📦 หุ้นในมือรวม: {summary['total_shares_before']:,.0f} | ขายออกรวม: {total_sell_pct:.2f}%")
+            st.write(f"💰 เงินสดรวม: ${summary['total_sold_value']:,.2f} | ราคาเฉลี่ยที่ขาย: ${summary['avg_sell_price']:.2f}")
+        
+        # ตาราง Insider
+        if insider is not None:
+            st.dataframe(insider[['Date', 'Insider Trading', 'Transaction', 'Cost', '#Shares', 'Value ($)', 'Sell %']].head(10), use_container_width=True)
 
-        with tab3:
-            st.write(f"📰 **กระแสข่าวรวม:** {sent}")
-            for line in news[:10]: st.write(line)
+        st.divider()
 
-        with tab4:
-            # ข้อมูลดิบแบบตารางที่คุณต้องการ (เหมือนภาพที่ 2)
-            st.write("📑 **Fundamental Table (All Data)**")
-            df_fund = pd.DataFrame([fund]).T
-            df_fund.columns = ["Value"]
-            st.table(df_fund)
+        # --- กราฟและข่าว ---
+        st.image(chart, caption=f"กราฟเทคนิค {symbol}", use_container_width=True)
+        st.subheader("📰 วิเคราะห์อารมณ์ข่าวล่าสุด")
+        for line in news[:10]:
+            st.write(line)
     else:
-        st.error("ไม่พบข้อมูลหุ้นตัวนี้")
+        st.error("ไม่พบข้อมูลหุ้น")
