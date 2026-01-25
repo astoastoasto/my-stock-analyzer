@@ -6,36 +6,39 @@ from finvizfinance.quote import finvizfinance
 from textblob import TextBlob
 import requests
 
-# --- 1. ระบบบันทึกข้อมูล ---
+# --- 1. ระบบบันทึกข้อมูล (Google Form) ---
 def log_to_sheets(symbol, money):
     form_url = "https://docs.google.com/forms/d/e/1FAIpQLSfLWvSOAQGO0XzO6DsMLgqjyZeKCe_tLSk1WLJYm4FL7zYPjA/formResponse"
     payload = {"entry.336685021": symbol.upper(), "entry.71218977": str(money)}
-    try: requests.post(form_url, data=payload)
-    except: pass
+    try:
+        requests.post(form_url, data=payload)
+    except:
+        pass
 
 # --- 2. ฟังก์ชันวิเคราะห์ Logic (เข้มงวด แม่นยำระดับมือโปร) ---
 def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     try:
-        # ดึงข้อมูลสดจาก Yahoo Finance
+        # ดึงข้อมูลจาก Yahoo Finance (สดใหม่กว่า Finviz)
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1y")
-        if df.empty: return None
+        if df.empty:
+            return None
         
-        # คำนวณ Technical Indicators เองเพื่อความสดใหม่
-        df['SMA20'] = ta.sma(df['Close'], length=20)
-        df['SMA50'] = ta.sma(df['Close'], length=50)
-        df['RSI'] = ta.rsi(df['Close'], length=14)
+        # คำนวณ Technical Indicators
+        df['SMA20_calc'] = ta.sma(df['Close'], length=20)
+        df['SMA50_calc'] = ta.sma(df['Close'], length=50)
+        df['RSI_calc'] = ta.rsi(df['Close'], length=14)
         macd = ta.macd(df['Close'])
         df = pd.concat([df, macd], axis=1)
 
         # ค่าล่าสุดสำหรับตัดสินใจ
         p_now = df['Close'].iloc[-1]
         p_prev = df['Close'].iloc[-2]
-        rsi_val = df['RSI'].iloc[-1]
+        rsi_val = df['RSI_calc'].iloc[-1]
         m_val = df['MACD_12_26_9'].iloc[-1]
         m_s = df['MACDs_12_26_9'].iloc[-1]
-        s20 = df['SMA20'].iloc[-1]
-        s50 = df['SMA50'].iloc[-1]
+        s20 = df['SMA20_calc'].iloc[-1]
+        s50 = df['SMA50_calc'].iloc[-1]
 
         # ดึงข้อมูลเสริมจาก Finviz
         stock_fv = finvizfinance(symbol)
@@ -49,16 +52,21 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
             if 'B' in s: return float(s.replace('B', '')) * 1_000_000_000
             if 'M' in s: return float(s.replace('M', '')) * 1_000_000
             if 'K' in s: return float(s.replace('K', '')) * 1_000
-            try: return float(s)
-            except: return 0.0
+            try:
+                return float(s)
+            except:
+                return 0.0
 
         mcap = to_num(fundament['Market Cap'])
         avg_vol = to_num(fundament['Avg Volume'])
 
         # จำแนกประเภทหุ้น
-        if mcap > 200_000_000_000: stock_type = "💎 Blue Chip"
-        elif p_now < 5 or mcap < 300_000_000: stock_type = "⚠️ Penny Stock"
-        else: stock_type = "🚀 Growth/Speculative"
+        if mcap > 200_000_000_000:
+            stock_type = "💎 Blue Chip"
+        elif p_now < 5 or mcap < 300_000_000:
+            stock_type = "⚠️ Penny Stock"
+        else:
+            stock_type = "🚀 Growth/Speculative"
 
         # วิเคราะห์ Sentiment ข่าว
         news_analysis = []
@@ -88,16 +96,19 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
                 agg_summary['total_shares'] = total_own + agg_summary['sold_shares']
 
         return fundament, news_analysis, insider_df, agg_summary, chart_url, sentiment_summary, stock_type, rsi_val, p_now, p_prev, s20, s50, m_val, m_s
-    except Exception as e: return str(e)
+    except Exception as e:
+        return str(e)
 
-# --- 3. UI Layout ---
+# --- 3. การแสดงผล UI ---
 st.set_page_config(page_title="Ultimate Pro Stock Analysis", layout="wide")
 
 st.markdown("### 🔍 Stock Analysis")
 
 col_in1, col_in2, col_input3 = st.columns([2, 2, 1])
-with col_in1: symbol = st.text_input("กรอกชื่อหุ้น (Ticker):", value="NVDA").upper()
-with col_in2: my_money = st.number_input("งบลงทุนต่อไม้ ($):", value=300)
+with col_in1:
+    symbol = st.text_input("กรอกชื่อหุ้น (Ticker):", value="NVDA").upper()
+with col_in2:
+    my_money = st.number_input("งบลงทุนต่อไม้ ($):", value=300)
 with col_input3:
     st.markdown('<div style="padding-top: 28px;"></div>', unsafe_allow_html=True)
     btn = st.button("🚀 SCAN", use_container_width=True)
@@ -113,8 +124,10 @@ if btn:
         
         # --- 🚨 TREND LOGIC (ดักจับขาลงแบบแอปพรีเมียม) ---
         if p_now < s20 or p_now < s50 or m_val < m_s or rsi < 48 or p_now < p_prev:
-            if rsi < 35: st.warning(f"💡 สรุปแนวโน้ม: 🕳️ มุดดิน (Oversold - รอเด้งสั้น)")
-            else: st.error(f"💡 สรุปแนวโน้ม: 🔴 ขาลงชัดเจน (Bearish/Correction - เสี่ยงสูง)")
+            if rsi < 35:
+                st.warning(f"💡 สรุปแนวโน้ม: 🕳️ มุดดิน (Oversold - รอเด้งสั้น)")
+            else:
+                st.error(f"💡 สรุปแนวโน้ม: 🔴 ขาลงชัดเจน (Bearish/Correction - เสี่ยงสูง)")
         elif p_now > s20 and p_now > s50 and m_val > m_s and rsi > 52:
             st.success(f"💡 สรุปแนวโน้ม: 🚀 ขาขึ้นแข็งแกร่ง (Strong Bullish)")
         else:
@@ -137,7 +150,8 @@ if btn:
         if summary['total_shares'] > 0:
             sell_p = (summary['sold_shares'] / summary['total_shares']) * 100
             st.write(f"📦 หุ้นในมือรวม: {summary['total_shares']:,.0f} | ขายออก: {sell_p:.2f}%")
-        else: st.write("ไม่พบข้อมูลคนใน")
+        else:
+            st.write("ไม่พบข้อมูลคนใน")
 
         # กราฟ
         
@@ -145,6 +159,7 @@ if btn:
         
         # ข่าว
         with st.expander("📰 ดูข่าวล่าสุด"):
-            for line in news[:10]: st.write(line)
+            for line in news[:10]:
+                st.write(line)
     else:
         st.error(f"Error: {result}")
