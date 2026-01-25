@@ -18,7 +18,7 @@ def log_to_sheets(symbol, money):
 # --- 2. ฟังก์ชันวิเคราะห์ Logic (เข้มงวด แม่นยำระดับมือโปร) ---
 def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     try:
-        # ดึงข้อมูลจาก Yahoo Finance (สดใหม่กว่า)
+        # ดึงข้อมูลจาก Yahoo Finance เพื่อความสดใหม่
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1y")
         if df.empty:
@@ -31,12 +31,12 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
         macd = ta.macd(df['Close'])
         df = pd.concat([df, macd], axis=1)
 
-        # ค่าล่าสุดสำหรับตัดสินใจ
+        # ค่าล่าสุดสำหรับตัดสินใจ (ดักจับขาลงแบบแอปพรีเมียม)
         p_now = df['Close'].iloc[-1]
         p_prev = df['Close'].iloc[-2]
         rsi_val = df['RSI_calc'].iloc[-1]
-        macd_val = df['MACD_12_26_9'].iloc[-1]
-        macd_s = df['MACDs_12_26_9'].iloc[-1]
+        m_val = df['MACD_12_26_9'].iloc[-1]
+        m_s = df['MACDs_12_26_9'].iloc[-1]
         s20 = df['SMA20_calc'].iloc[-1]
         s50 = df['SMA50_calc'].iloc[-1]
 
@@ -108,7 +108,7 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
                 total_own = insider_df.groupby('Insider Trading')['total_owned_num'].first().sum()
                 agg_summary['total_shares'] = total_own + agg_summary['sold_shares']
 
-        return fundament, news_analysis, insider_df, agg_summary, chart_url, dip_price, tp_short, tp_target, sl_val, sl_workable, sentiment_summary, stock_type, rsi_val, p_now, p_prev, s20, s50, macd_val, macd_s
+        return fundament, news_analysis, insider_df, agg_summary, chart_url, dip_price, tp_short, tp_target, sl_val, sl_workable, sentiment_summary, stock_type, rsi_val, p_now, p_prev, s20, s50, m_val, m_s
     except Exception as e:
         return str(e)
 
@@ -117,7 +117,7 @@ st.set_page_config(page_title="Ultimate Pro Stock Analysis", layout="wide")
 
 st.markdown("### 🔍 Stock Analysis")
 
-# ส่วนรับค่าแถวเดียว ปุ่ม SCAN ขนานกับช่องกรอก
+# ส่วนรับค่าแถวเดียว ปุ่ม SCAN ขนานกับช่องข้อมูลตามภาพที่ 4
 col_in1, col_in2, col_input3 = st.columns([2, 2, 1])
 with col_in1:
     symbol = st.text_input("กรอกชื่อหุ้น (Ticker):", value="NVDA").upper()
@@ -138,24 +138,22 @@ if btn:
         st.subheader(f"📈 วิเคราะห์ {symbol} | ประเภท: {s_type}")
         st.write(f"📊 Market Cap: {fund['Market Cap']} | Avg Volume: {fund['Avg Volume']}")
         
-        # --- 🚨 TREND LOGIC (ดักจับขาลงแบบแอปพรีเมียม) ---
-        # ขาลงชัดเจน: ราคาหลุดเส้นเฉลี่ย หรือ MACD ตัดลง หรือ RSI อ่อนแรง หรือราคาต่ำกว่าวันก่อนหน้า
+        # --- 🚨 TREND LOGIC (ดักจับขาลง NVDA ตามภาพที่ 9) ---
         if p_now < s20 or p_now < s50 or m_val < m_s or rsi < 48 or p_now < p_prev:
             if rsi < 30:
-                st.warning(f"💡 สรุปแนวโน้ม: 🕳️ มุดดิน (Oversold - รอสัญญาณเด้งสั้น)")
+                st.warning(f"💡 สรุปแนวโน้ม: 🕳️ มุดดิน (Oversold - รอเด้งสั้น)")
             else:
                 st.error(f"💡 สรุปแนวโน้ม: 🔴 ขาลงชัดเจน (Bearish/Correction - เสี่ยงสูง)")
-        # ขาขึ้นแข็งแกร่ง: ต้องเขียวทุกมิติ
         elif p_now > s20 and p_now > s50 and m_val > m_s and rsi > 52 and p_now >= p_prev:
             st.success(f"💡 สรุปแนวโน้ม: 🚀 ขาขึ้นแข็งแกร่ง (Strong Bullish)")
         else:
-            st.info(f"💡 สรุปแนวโน้ม: 😴 พักฐาน/แนวโน้มไม่ชัดเจน (Sideway)")
+            st.info(f"💡 สรุปแนวโน้ม: 😴 พักฐาน (Sideway)")
 
         # ข้อมูลเทคนิค
         st.write(f"📊 SMA20: {fund['SMA20']} | SMA50: {fund['SMA50']} | SMA200: {fund['SMA200']}")
         st.write(f"📉 RSI: {rsi:.2f} | 📰 News Sentiment: {sent}")
 
-        # กลยุทธ์แนะนำ
+        # กลยุทธ์แนะนำตามภาพที่ 5
         st.subheader(f"🎯 กลยุทธ์แนะนำ (ไม้ ${my_money})")
         c1, c2, c3 = st.columns(3)
         c1.success(f"✅ Buy Zone: ${dip:.2f}")
@@ -163,23 +161,23 @@ if btn:
         c3.error(f"🛑 Stop Loss: ${sl:.2f}")
         st.caption(f"🛡️ สภาพคล่อง SL: {sl_stat}")
 
-        # ตาราง Fundamental ใน Expander
+        # ตาราง Fundamental ใน Expander ตามภาพที่ 1
         with st.expander("📑 ข้อมูลพื้นฐานจาก Finviz (Fundamental Table)"):
             st.table(pd.DataFrame([fund]).T)
 
-        # ข้อมูลคนใน
+        # ข้อมูลคนในตามภาพที่ 6
         st.subheader(f"🏢 สรุปความเชื่อมั่นคนใน {symbol}")
         if summary['total_shares'] > 0:
             sell_pct = (summary['sold_shares'] / summary['total_shares']) * 100
-            st.write(f"📦 หุ้นในมือรวม: {summary['total_shares']:,.0f} | ขายออก: {sell_pct:.2f}%")
+            st.write(f"📦 หุ้นในมือรวม: {summary['total_shares']:,.0f} | ขายออกรวม: {sell_pct:.2f}%")
             st.write(f"💰 มูลค่าเงินสด: ${summary['sold_value']:,.2f} | ราคาเฉลี่ย: ${summary['avg_price']:.2f}")
         else:
             st.write("ไม่พบข้อมูลการขายของคนใน")
 
-        # แสดงภาพกราฟ (จัดย่อหน้าถูกต้อง 100%)
+        # แสดงภาพกราฟ (แก้ปัญหา IndentationError 100%)
                 st.image(chart, use_container_width=True)
         
-        # ข่าวสารล่าสุด
+        # ข่าววิเคราะห์
         with st.expander("📰 ดูข่าววิเคราะห์ล่าสุด 10 อันดับ"):
             for line in news[:10]:
                 st.write(line)
