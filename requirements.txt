@@ -2,4 +2,6 @@ streamlit
 finvizfinance
 pandas
 textblob
-st-gsheets-connection
+yfinance
+pandas_ta
+requests
