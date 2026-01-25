@@ -72,7 +72,7 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
             sales = insider_df[insider_df['Transaction'].str.contains('Sale', case=False, na=False)].copy()
             if not sales.empty:
                 agg_summary['total_sold_shares'] = sales['shares_num'].sum()
-                agg_summary['total_sold_value'] = sales['Value ($)'].apply(to_num).sum()
+                agg_summary['total_sold_value'] = sales['value_num'].sum() if 'value_num' in insider_df else 0
                 agg_summary['avg_sell_price'] = sales['Cost'].apply(to_num).mean()
                 total_current_remaining = insider_df.groupby('Insider Trading')['total_owned_num'].first().sum()
                 agg_summary['total_shares_before'] = total_current_remaining + agg_summary['total_sold_shares']
@@ -136,7 +136,7 @@ if btn:
         if summary['total_shares_before'] > 0:
             total_sell_pct = (summary['total_sold_shares'] / summary['total_shares_before']) * 100
             st.write(f"📦 หุ้นในมือรวม: {summary['total_shares_before']:,.0f} | ขายออกรวม: {total_sell_pct:.2f}%")
-            st.write(f"💰 มูลค่าเงินสดรวม: ${summary['total_sold_value']:,.2f} | ราคาเฉลี่ย: ${summary['avg_sell_price']:.2f}")
+            st.write(f"💰 ราคาเฉลี่ยที่เจ้าของขาย: ${summary['avg_sell_price']:.2f}")
 
         
         st.image(chart, use_container_width=True)
