@@ -31,7 +31,7 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
         macd = ta.macd(df['Close'])
         df = pd.concat([df, macd], axis=1)
 
-        # ค่าล่าสุดสำหรับตัดสินใจ
+        # ค่าล่าสุดสำหรับตัดสินใจ (ดักจับขาลงแบบแอปพรีเมียม)
         p_now = df['Close'].iloc[-1]
         p_prev = df['Close'].iloc[-2]
         rsi_val = df['RSI_calc'].iloc[-1]
