@@ -10,16 +10,19 @@ import requests
 def log_to_sheets(symbol, money):
     form_url = "https://docs.google.com/forms/d/e/1FAIpQLSfLWvSOAQGO0XzO6DsMLgqjyZeKCe_tLSk1WLJYm4FL7zYPjA/formResponse"
     payload = {"entry.336685021": symbol.upper(), "entry.71218977": str(money)}
-    try: requests.post(form_url, data=payload)
-    except: pass
+    try:
+        requests.post(form_url, data=payload)
+    except:
+        pass
 
 # --- 2. ฟังก์ชันวิเคราะห์ Logic (เข้มงวด แม่นยำระดับมือโปร) ---
 def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     try:
-        # ดึงข้อมูลจาก Yahoo Finance
+        # ดึงข้อมูลจาก Yahoo Finance (สดใหม่กว่า)
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1y")
-        if df.empty: return None
+        if df.empty:
+            return None
         
         # คำนวณ Technical Indicators
         df['SMA20_calc'] = ta.sma(df['Close'], length=20)
@@ -49,17 +52,23 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
             if 'B' in s: return float(s.replace('B', '')) * 1_000_000_000
             if 'M' in s: return float(s.replace('M', '')) * 1_000_000
             if 'K' in s: return float(s.replace('K', '')) * 1_000
-            try: return float(s)
-            except: return 0.0
+            try:
+                return float(s)
+            except:
+                return 0.0
 
         mcap = to_num(fundament['Market Cap'])
         avg_vol = to_num(fundament['Avg Volume'])
 
         # จำแนกประเภทหุ้น
-        if mcap > 200_000_000_000: stock_type = "💎 Blue Chip"
-        elif p_now < 5 or mcap < 300_000_000: stock_type = "⚠️ Penny Stock"
-        elif 2_000_000_000 <= mcap <= 200_000_000_000: stock_type = "🚀 Mid-Cap Swing"
-        else: stock_type = "🔍 Small-Cap / Speculative"
+        if mcap > 200_000_000_000:
+            stock_type = "💎 Blue Chip"
+        elif p_now < 5 or mcap < 300_000_000:
+            stock_type = "⚠️ Penny Stock"
+        elif 2_000_000_000 <= mcap <= 200_000_000_000:
+            stock_type = "🚀 Mid-Cap Swing"
+        else:
+            stock_type = "🔍 Small-Cap / Speculative"
 
         # วิเคราะห์ Sentiment ข่าว
         news_analysis = []
@@ -100,13 +109,15 @@ def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
                 agg_summary['total_shares'] = total_own + agg_summary['sold_shares']
 
         return fundament, news_analysis, insider_df, agg_summary, chart_url, dip_price, tp_short, tp_target, sl_val, sl_workable, sentiment_summary, stock_type, rsi_val, p_now, p_prev, s20, s50, macd_val, macd_s
-    except Exception as e: return str(e)
+    except Exception as e:
+        return str(e)
 
 # --- 3. การแสดงผล UI ---
 st.set_page_config(page_title="Ultimate Pro Stock Analysis", layout="wide")
 
 st.markdown("### 🔍 Stock Analysis")
 
+# ส่วนรับค่าแถวเดียว ปุ่ม SCAN ขนานกับช่องกรอก
 col_in1, col_in2, col_input3 = st.columns([2, 2, 1])
 with col_in1:
     symbol = st.text_input("กรอกชื่อหุ้น (Ticker):", value="NVDA").upper()
@@ -127,20 +138,24 @@ if btn:
         st.subheader(f"📈 วิเคราะห์ {symbol} | ประเภท: {s_type}")
         st.write(f"📊 Market Cap: {fund['Market Cap']} | Avg Volume: {fund['Avg Volume']}")
         
-        # --- TREND LOGIC ---
-        if p_now > s20 and p_now > s50 and m_val > m_s and rsi > 50 and p_now >= p_prev:
+        # --- 🚨 TREND LOGIC (ดักจับขาลงแบบแอปพรีเมียม) ---
+        # ขาลงชัดเจน: ราคาหลุดเส้นเฉลี่ย หรือ MACD ตัดลง หรือ RSI อ่อนแรง หรือราคาต่ำกว่าวันก่อนหน้า
+        if p_now < s20 or p_now < s50 or m_val < m_s or rsi < 48 or p_now < p_prev:
+            if rsi < 30:
+                st.warning(f"💡 สรุปแนวโน้ม: 🕳️ มุดดิน (Oversold - รอสัญญาณเด้งสั้น)")
+            else:
+                st.error(f"💡 สรุปแนวโน้ม: 🔴 ขาลงชัดเจน (Bearish/Correction - เสี่ยงสูง)")
+        # ขาขึ้นแข็งแกร่ง: ต้องเขียวทุกมิติ
+        elif p_now > s20 and p_now > s50 and m_val > m_s and rsi > 52 and p_now >= p_prev:
             st.success(f"💡 สรุปแนวโน้ม: 🚀 ขาขึ้นแข็งแกร่ง (Strong Bullish)")
-        elif p_now < s20 or p_now < s50 or m_val < m_s or rsi < 45 or p_now < p_prev:
-            if rsi < 30: st.warning(f"💡 สรุปแนวโน้ม: 🕳️ มุดดิน (Oversold - รอเด้ง)")
-            else: st.error(f"💡 สรุปแนวโน้ม: 🔴 ขาลงชัดเจน (Bearish - เสี่ยงสูง)")
         else:
-            st.info(f"💡 สรุปแนวโน้ม: 😴 พักฐาน (Sideway)")
+            st.info(f"💡 สรุปแนวโน้ม: 😴 พักฐาน/แนวโน้มไม่ชัดเจน (Sideway)")
 
         # ข้อมูลเทคนิค
         st.write(f"📊 SMA20: {fund['SMA20']} | SMA50: {fund['SMA50']} | SMA200: {fund['SMA200']}")
         st.write(f"📉 RSI: {rsi:.2f} | 📰 News Sentiment: {sent}")
 
-        # กลยุทธ์
+        # กลยุทธ์แนะนำ
         st.subheader(f"🎯 กลยุทธ์แนะนำ (ไม้ ${my_money})")
         c1, c2, c3 = st.columns(3)
         c1.success(f"✅ Buy Zone: ${dip:.2f}")
@@ -148,7 +163,7 @@ if btn:
         c3.error(f"🛑 Stop Loss: ${sl:.2f}")
         st.caption(f"🛡️ สภาพคล่อง SL: {sl_stat}")
 
-        # ตาราง Fundamental (กลับมาแล้ว!)
+        # ตาราง Fundamental ใน Expander
         with st.expander("📑 ข้อมูลพื้นฐานจาก Finviz (Fundamental Table)"):
             st.table(pd.DataFrame([fund]).T)
 
@@ -158,12 +173,15 @@ if btn:
             sell_pct = (summary['sold_shares'] / summary['total_shares']) * 100
             st.write(f"📦 หุ้นในมือรวม: {summary['total_shares']:,.0f} | ขายออก: {sell_pct:.2f}%")
             st.write(f"💰 มูลค่าเงินสด: ${summary['sold_value']:,.2f} | ราคาเฉลี่ย: ${summary['avg_price']:.2f}")
-        
-        # กราฟ
+        else:
+            st.write("ไม่พบข้อมูลการขายของคนใน")
+
+        # แสดงภาพกราฟ (จัดย่อหน้าถูกต้อง 100%)
                 st.image(chart, use_container_width=True)
         
-        # ข่าว
+        # ข่าวสารล่าสุด
         with st.expander("📰 ดูข่าววิเคราะห์ล่าสุด 10 อันดับ"):
-            for line in news[:10]: st.write(line)
+            for line in news[:10]:
+                st.write(line)
     else:
-        st.error(f"เกิดข้อผิดพลาด: {result}")
+        st.error(f"เกิดข้อผิดพลาดในการดึงข้อมูล: {result}")
