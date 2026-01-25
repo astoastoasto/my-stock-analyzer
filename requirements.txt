@@ -1,7 +1,7 @@
 streamlit
-finvizfinance
 pandas
-textblob
 yfinance
 pandas_ta
+finvizfinance
+textblob
 requests
