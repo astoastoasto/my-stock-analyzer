@@ -6,189 +6,134 @@ from finvizfinance.quote import finvizfinance
 from textblob import TextBlob
 import requests
 
-# =========================
-# 1. LOG TO GOOGLE FORM
-# =========================
+# --- 1. ระบบบันทึกข้อมูล (Google Form) ---
 def log_to_sheets(symbol, money):
     form_url = "https://docs.google.com/forms/d/e/1FAIpQLSfLWvSOAQGO0XzO6DsMLgqjyZeKCe_tLSk1WLJYm4FL7zYPjA/formResponse"
-    payload = {
-        "entry.336685021": symbol.upper(),
-        "entry.71218977": str(money)
-    }
+    payload = {"entry.336685021": symbol.upper(), "entry.71218977": str(money)}
     try:
-        requests.post(form_url, data=payload, timeout=3)
+        requests.post(form_url, data=payload)
     except:
         pass
 
-
-# =========================
-# 2. HELPER
-# =========================
-def to_num(val):
-    s = str(val).replace(',', '').replace('$', '').replace('%', '')
-    if 'B' in s: return float(s.replace('B', '')) * 1_000_000_000
-    if 'M' in s: return float(s.replace('M', '')) * 1_000_000
-    if 'K' in s: return float(s.replace('K', '')) * 1_000
+# --- 2. ฟังก์ชันวิเคราะห์ Logic (เข้มงวด แม่นยำระดับมือโปร) ---
+def get_ultimate_pro_intelligence(symbol, my_investment_usd=300):
     try:
-        return float(s)
-    except:
-        return 0.0
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period="1y")
+        if df.empty:
+            return None
+        
+        df['SMA20_calc'] = ta.sma(df['Close'], length=20)
+        df['SMA50_calc'] = ta.sma(df['Close'], length=50)
+        df['RSI_calc'] = ta.rsi(df['Close'], length=14)
+        macd = ta.macd(df['Close'])
+        df = pd.concat([df, macd], axis=1)
 
+        p_now = df['Close'].iloc[-1]
+        p_prev = df['Close'].iloc[-2]
+        rsi_val = df['RSI_calc'].iloc[-1]
+        m_val = df['MACD_12_26_9'].iloc[-1]
+        m_s = df['MACDs_12_26_9'].iloc[-1]
+        s20 = df['SMA20_calc'].iloc[-1]
+        s50 = df['SMA50_calc'].iloc[-1]
 
-# =========================
-# 3. TECHNICAL ANALYSIS
-# =========================
-def get_technical_data(symbol):
-    ticker = yf.Ticker(symbol)
-    df = ticker.history(period="1y")
+        stock_fv = finvizfinance(symbol)
+        fundament = stock_fv.ticker_fundament()
+        news_df = stock_fv.ticker_news()
+        insider_df = stock_fv.ticker_inside_trader()
+        chart_url = stock_fv.ticker_charts()
 
-    if df is None or df.empty or len(df) < 60:
-        return None, "ข้อมูลราคาไม่พอ"
+        def to_num(s):
+            s = str(s).replace(',', '').replace('$', '').replace('%', '')
+            if 'B' in s: return float(s.replace('B', '')) * 1_000_000_000
+            if 'M' in s: return float(s.replace('M', '')) * 1_000_000
+            if 'K' in s: return float(s.replace('K', '')) * 1_000
+            try:
+                return float(s)
+            except:
+                return 0.0
 
-    df['SMA20'] = ta.sma(df['Close'], 20)
-    df['SMA50'] = ta.sma(df['Close'], 50)
-    df['RSI'] = ta.rsi(df['Close'], 14)
+        mcap = to_num(fundament['Market Cap'])
 
-    macd = ta.macd(df['Close'])
-    df = pd.concat([df, macd], axis=1)
+        if mcap > 200_000_000_000:
+            stock_type = "💎 Blue Chip"
+        elif p_now < 5 or mcap < 300_000_000:
+            stock_type = "⚠️ Penny Stock"
+        else:
+            stock_type = "🚀 Growth/Speculative"
 
-    latest = df.iloc[-1]
-    prev = df.iloc[-2]
+        news_analysis = []
+        sentiment_summary = "⚪ Neutral"
+        if news_df is not None and not news_df.empty:
+            top_news = news_df.head(15)
+            total_p = 0
+            for _, row in top_news.iterrows():
+                p = TextBlob(row['Title']).sentiment.polarity
+                total_p += p
+                icon = "🟢" if p > 0.1 else "🔴" if p < -0.1 else "⚪"
+                news_analysis.append(f"{icon} [{row['Date']}] {row['Title']}")
+            sentiment_summary = f"({total_p/len(top_news):.2f})"
 
-    return {
-        "price": latest['Close'],
-        "prev_price": prev['Close'],
-        "sma20": latest['SMA20'],
-        "sma50": latest['SMA50'],
-        "rsi": latest['RSI'],
-        "macd": latest['MACD_12_26_9'],
-        "macd_signal": latest['MACDs_12_26_9']
-    }, None
+        agg_summary = {'total_shares': 0, 'sold_shares': 0}
+        if insider_df is not None and not insider_df.empty:
+            insider_df['shares_num'] = insider_df['#Shares'].apply(to_num)
+            sales = insider_df[insider_df['Transaction'].str.contains('Sale', na=False)]
+            agg_summary['sold_shares'] = sales['shares_num'].sum()
+            agg_summary['total_shares'] = insider_df['shares_num'].sum()
 
+        return fundament, news_analysis, insider_df, agg_summary, chart_url, sentiment_summary, stock_type, rsi_val, p_now, p_prev, s20, s50, m_val, m_s
 
-# =========================
-# 4. FINVIZ DATA
-# =========================
-def get_finviz_data(symbol):
-    fv = finvizfinance(symbol)
-    fund = fv.ticker_fundament()
-    news = fv.ticker_news()
-    insider = fv.ticker_inside_trader()
-    chart = fv.ticker_charts()
-    return fund, news, insider, chart
+    except Exception as e:
+        return str(e)
 
+# --- 3. การแสดงผล UI ---
+st.set_page_config(page_title="Ultimate Pro Stock Analysis", layout="wide")
+st.markdown("### 🔍 Stock Analysis")
 
-# =========================
-# 5. SENTIMENT
-# =========================
-def analyze_news_sentiment(news_df):
-    if news_df is None or news_df.empty:
-        return [], "⚪ Neutral"
+col_in1, col_in2, col_input3 = st.columns([2, 2, 1])
+with col_in1:
+    symbol = st.text_input("กรอกชื่อหุ้น (Ticker):", value="NVDA").upper()
+with col_in2:
+    my_money = st.number_input("งบลงทุนต่อไม้ ($):", value=300)
+with col_input3:
+    st.markdown('<div style="padding-top: 28px;"></div>', unsafe_allow_html=True)
+    btn = st.button("🚀 SCAN", use_container_width=True)
 
-    scores = []
-    lines = []
+if btn:
+    log_to_sheets(symbol, my_money)
+    result = get_ultimate_pro_intelligence(symbol, my_money)
 
-    for _, row in news_df.head(15).iterrows():
-        polarity = TextBlob(row['Title']).sentiment.polarity
-        scores.append(polarity)
-        icon = "🟢" if polarity > 0.1 else "🔴" if polarity < -0.1 else "⚪"
-        lines.append(f"{icon} [{row['Date']}] {row['Title']}")
+    if isinstance(result, tuple):
+        fund, news, insider, summary, chart, sent, s_type, rsi, p_now, p_prev, s20, s50, m_val, m_s = result
 
-    avg = sum(scores) / len(scores)
-    return lines, f"({avg:.2f})"
+        st.subheader(f"📈 วิเคราะห์ {symbol} | ประเภท: {s_type}")
 
+        # --- 🚨 TREND LOGIC (ของเดิม ไม่ลบ) ---
+        if p_now < s20 or p_now < s50 or m_val < m_s or rsi < 48 or p_now < p_prev:
+            old_trend = "BEAR"
+        elif p_now > s20 and p_now > s50 and m_val > m_s and rsi > 52:
+            old_trend = "BULL"
+        else:
+            old_trend = "SIDE"
 
-# =========================
-# 6. INSIDER ANALYSIS
-# =========================
-def analyze_insider(insider_df):
-    summary = {"total": 0, "sold": 0}
+        # --- ADDED: Trend Score (เพิ่ม ไม่แตะของเดิม) ---
+        trend_score = 0
+        trend_score += 1 if p_now > s20 else 0
+        trend_score += 1 if p_now > s50 else 0
+        trend_score += 1 if m_val > m_s else 0
+        trend_score += 1 if rsi > 55 else -1 if rsi < 45 else 0
+        trend_score += 1 if p_now > p_prev else -1
 
-    if insider_df is None or insider_df.empty:
-        return summary
+        if trend_score >= 4:
+            st.success("💡 สรุปแนวโน้ม: 🚀 ขาขึ้นจริง")
+        elif trend_score <= 1:
+            st.error("💡 สรุปแนวโน้ม: 🔴 ขาลง / เสี่ยง")
+        else:
+            st.info("💡 สรุปแนวโน้ม: 😴 พักฐาน")
 
-    insider_df['shares_num'] = insider_df['#Shares'].apply(to_num)
+        st.write(f"📊 Market Cap: {fund['Market Cap']} | Price: ${p_now:.2f} | RSI: {rsi:.2f}")
+        st.image(chart, use_container_width=True)
 
-    sold = insider_df[insider_df['Transaction'].str.contains('Sale', na=False)]
-    summary['sold'] = sold['shares_num'].sum()
-    summary['total'] = insider_df['shares_num'].sum()
-
-    return summary
-
-
-# =========================
-# 7. TREND LOGIC (ของเดิม + ชัดขึ้น)
-# =========================
-def detect_trend(t):
-    if (
-        t['price'] < t['sma20'] or
-        t['price'] < t['sma50'] or
-        t['macd'] < t['macd_signal'] or
-        t['rsi'] < 48 or
-        t['price'] < t['prev_price']
-    ):
-        if t['rsi'] < 35:
-            return "🕳️ Oversold (รอเด้งสั้น)", "warning"
-        return "🔴 ขาลงชัดเจน (Bearish)", "error"
-
-    if (
-        t['price'] > t['sma20'] and
-        t['price'] > t['sma50'] and
-        t['macd'] > t['macd_signal'] and
-        t['rsi'] > 52
-    ):
-        return "🚀 ขาขึ้นแข็งแกร่ง (Strong Bullish)", "success"
-
-    return "😴 พักฐาน / Sideway", "info"
-
-
-# =========================
-# 8. UI
-# =========================
-st.set_page_config("Ultimate Pro Stock Analysis", layout="wide")
-st.title("🔍 Ultimate Pro Stock Analysis")
-
-c1, c2, c3 = st.columns([2, 2, 1])
-with c1:
-    symbol = st.text_input("Ticker", "NVDA").upper()
-with c2:
-    budget = st.number_input("งบต่อไม้ ($)", 100, 10000, 300)
-with c3:
-    st.markdown("<br>", unsafe_allow_html=True)
-    scan = st.button("🚀 SCAN", use_container_width=True)
-
-if scan:
-    log_to_sheets(symbol, budget)
-
-    tech, err = get_technical_data(symbol)
-    if err:
-        st.error(err)
-        st.stop()
-
-    fund, news, insider, chart = get_finviz_data(symbol)
-    news_lines, sentiment = analyze_news_sentiment(news)
-    insider_sum = analyze_insider(insider)
-
-    trend_text, trend_type = detect_trend(tech)
-    getattr(st, trend_type)(f"💡 แนวโน้ม: {trend_text}")
-
-    st.write(
-        f"📊 Price: ${tech['price']:.2f} | "
-        f"RSI: {tech['rsi']:.2f} | "
-        f"Market Cap: {fund.get('Market Cap','-')}"
-    )
-
-    st.subheader("🎯 กลยุทธ์")
-    a, b, c = st.columns(3)
-    a.success(f"Buy ~ ${tech['price']*0.98:.2f}")
-    b.info(f"Target ~ ${tech['price']*1.07:.2f}")
-    c.error(f"SL ~ ${tech['price']*0.95:.2f}")
-
-    with st.expander("📑 Fundamental (Finviz)"):
-        st.table(pd.DataFrame([fund]).T)
-
-    with st.expander("📰 ข่าวล่าสุด"):
-        for n in news_lines[:10]:
-            st.write(n)
-
-    st.image(chart, use_container_width=True)
+        with st.expander("📰 ดูข่าวล่าสุด"):
+            for line in news[:10]:
+                st.write(line)
